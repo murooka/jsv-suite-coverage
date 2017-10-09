@@ -1,0 +1,18 @@
+[
+    {
+        "description": "string type",
+        "schema": { "type": "string" },
+        "tests": [
+            {
+                "description": "Yes, it's string!",
+                "data": "mojiretsu",
+                "valid": true
+            },
+            {
+                "description": "No, it's number",
+                "data": 42,
+                "valid": false
+            }
+        ]
+    }
+]

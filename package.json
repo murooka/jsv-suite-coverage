@@ -1,0 +1,21 @@
+{
+  "name": "jsv-suite-coverage",
+  "version": "0.0.1",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "scripts": {
+    "start": "tsc -w",
+    "test": "./bin/test.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^8.0.31",
+    "ts-loader": "^2.3.7",
+    "typescript": "^2.5.3",
+    "webpack": "^3.6.0"
+  },
+  "dependencies": {
+    "colors": "^1.1.2",
+    "deep-equal": "^1.0.1",
+    "jsonpointer": "^4.0.1"
+  }
+}
