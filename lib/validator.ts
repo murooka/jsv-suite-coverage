@@ -20,6 +20,14 @@ class Context {
   get pointer(): string {
     return this.paths.map(p => `/${p}`).join('');
   }
+
+  pushSubPath(subPath: string) {
+    this.paths.push(subPath);
+  }
+
+  popSubPath() {
+    this.paths.pop();
+  }
 }
 
 interface Schema {
@@ -54,18 +62,22 @@ interface Schema {
 
 interface Error {
   message: string;
-  childErrors?: Error[][],
+  childErrors?: Error[],
 }
 
-function displayErrors(errors: Error[]): string {
+function repeat(s: string, level: number): string {
+  let rv = '';
+  for (let i=0; i<level; i++) rv += s;
+  return rv;
+}
+
+function displayErrors(errors: Error[], level: number = 0): string {
   let s = '';
   for (const e of errors) {
-    s += `error: ${e.message}\n`;
+    s += `${repeat('  ', level)}${e.message}\n`;
     if (!e.childErrors) continue;
 
-    for (const ces of e.childErrors) for (const ce of ces) {
-      s += `- ${ce.message}\n`;
-    }
+    s += `${repeat('  ', level)}  ${displayErrors(e.childErrors, level + 1)}\n`;
   }
   return s.replace(/\n$/, '');
 }
@@ -79,8 +91,11 @@ function parseRef(ref: string): { id: string, pointer: string } {
   return { id, pointer };
 }
 
+type ValidateCallback = (keyword: string, pointer: string, error: Error | null) => void;
+
 export default class Validator {
   schemaMap: { [id: string]: any };
+  onValidate: ValidateCallback | null;
 
   constructor() {
     this.schemaMap = {};
@@ -110,48 +125,87 @@ export default class Validator {
     let errors = [] as Error[];
 
     if (schema.$ref) {
+      ctx.pushSubPath('$ref');
+
       const { id, pointer } = parseRef(schema.$ref);
       const newCtx = id ? new Context(id, pointer) : new Context(ctx.id, pointer);
       const newSchema = JsonPointer.get(this.schemaMap[newCtx.id], newCtx.pointer) as Schema;
-      return this.validateRoot(newCtx, newSchema, data);
+      const errs = this.validateRoot(newCtx, newSchema, data);
+
+      if (this.onValidate) this.onValidate('$ref', ctx.pointer, { message: `$ref failed`, childErrors: errs });
+
+      ctx.popSubPath();
+
+      return errs;
     }
 
     if (schema.allOf) {
-      const childErrors = [] as Error[][];
+      const childErrors = [] as Error[];
+      ctx.pushSubPath('allOf');
       for (let i=0; i<schema.allOf.length; i++) {
+        ctx.pushSubPath(i.toString());
         const subSchema = schema.allOf[i];
         const errs = this.validateRoot(ctx, subSchema, data);
-        if (errs.length > 0) childErrors.push(errs);
+        if (errs.length > 0) childErrors.push({ message: `one of allOf schema failed`, childErrors: errs });
+        ctx.popSubPath();
       }
-      if (childErrors.length > 0) errors.push({ message: `allOf failed:`, childErrors });
+
+      const error = childErrors.length > 0 ? { message: `allOf failed:`, childErrors } : null;
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('allOf', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.anyOf) {
+      ctx.pushSubPath('anyOf');
+
       let passed = false;
       for (let i=0; i<schema.anyOf.length; i++) {
+        ctx.pushSubPath(i.toString());
         const subSchema = schema.anyOf[i];
         const errs = this.validateRoot(ctx, subSchema, data);
+        ctx.popSubPath();
         if (errs.length === 0) {
           passed = true;
           break;
         }
       }
-      if (!passed) errors.push({ message: `anyOf failed` });
+
+      const error = passed ? null : { message: `anyOf failed` };
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('anyOf', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.oneOf) {
       let count = 0;
+      ctx.pushSubPath('oneOf');
       for (let i=0; i<schema.oneOf.length; i++) {
+        ctx.pushSubPath(i.toString());
         const subSchema = schema.oneOf[i];
         const errs = this.validateRoot(ctx, subSchema, data);
+        ctx.popSubPath();
         if (errs.length === 0) count++;
       }
-      if (count !== 1) errors.push({ message: `oneOf failed, ${count} passed` });
+
+      const error = count !== 1 ? { message: `oneOf failed, ${count} passed` } : null;
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('oneOf', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.not) {
+      ctx.pushSubPath('not');
+
       const errs = this.validateRoot(ctx, schema.not, data);
-      if (errs.length === 0) errors.push({ message: `not failed` });
+      const error = errs.length === 0 ? { message: `not failed` } : null;
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('not', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (typeof data === 'object' && !Array.isArray(data)) {
@@ -175,16 +229,27 @@ export default class Validator {
     }
 
     if (schema.type) {
+      ctx.pushSubPath('type');
+
       const type: string | string[] = schema.type;
       const types = Array.isArray(type) ? type : [type];
       const error = this.validateType(ctx, types, data);
       if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('type', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.enum) {
+      ctx.pushSubPath('enum');
+
       const enums: any[] = schema.enum;
       const error = this.validateEnum(ctx, enums, data);
+
       if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('enum', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     return errors;
@@ -196,70 +261,137 @@ export default class Validator {
     const checked = {} as { [k: string]: boolean };
 
     if (schema.properties) {
+      ctx.pushSubPath('properties');
       for (const key of Object.keys(schema.properties)) {
         if (data[key] === undefined) continue;
 
         checked[key] = true;
+
+        ctx.pushSubPath(key);
         const errs = this.validateRoot(ctx, schema.properties[key], data[key]);
-        if (errs.length > 0) errors.push({ message: `properties "${key}" failed` });
+        const error = errs.length > 0 ? { message: `properties "${key}" failed`, childErrors: errs } : null;
+        if (error) errors.push(error);
+        if (this.onValidate) this.onValidate('properties', ctx.pointer, error);
+
+        ctx.popSubPath();
       }
+      ctx.popSubPath();
     }
 
     if (schema.patternProperties) {
+      ctx.pushSubPath('patternProperties');
       for (const pattern of Object.keys(schema.patternProperties)) {
+        ctx.pushSubPath(pattern);
         for (const key of Object.keys(data)) {
           if (!new RegExp(pattern).test(key)) continue;
 
           checked[key] = true;
           const subSchema = schema.patternProperties[pattern];
           const errs = this.validateRoot(ctx, subSchema, data[key]);
-          if (errs.length > 0) errors.push({ message: `patternProperties "${pattern}" failed` });
+          const error = errs.length > 0 ? { message: `patternProperties "${pattern}" failed`, childErrors: errs } : null;
+          if (error) errors.push(error);
+          if (this.onValidate) this.onValidate('patternProperties', ctx.pointer, error);
         }
+        ctx.popSubPath();
       }
+      ctx.popSubPath();
     }
 
     if (typeof schema.additionalProperties === 'boolean' && !schema.additionalProperties) {
-      if (Object.keys(checked).length < Object.keys(data).length) errors.push({ message: `additionalProperties failed` });
+      ctx.pushSubPath('additionalProperties');
+
+      let error = null as Error | null;
+      if (Object.keys(checked).length < Object.keys(data).length) error = { message: `additionalProperties failed` };
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('additionalProperties', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (typeof schema.additionalProperties === 'object' && schema.additionalProperties) {
+      ctx.pushSubPath('additionalProperties');
+
       for (const key of Object.keys(data)) {
         if (checked[key]) continue;
 
         const errs = this.validateRoot(ctx, schema.additionalProperties, data[key]);
-        if (errs.length > 0) errors.push({ message: `additionalProperties failed` });
+        const error = errs.length > 0 ? { message: `additionalProperties failed`, childErrors: errs } : null;
+        if (error) errors.push(error);
+        if (this.onValidate) this.onValidate('additionalProperties', ctx.pointer, error);
       }
+
+      ctx.popSubPath();
     }
 
     if (schema.maxProperties !== undefined) {
-      if (Object.keys(data).length > schema.maxProperties) errors.push({ message: `maxProperties "${schema.maxProperties}" failed` });
+      ctx.pushSubPath('maxProperties');
+
+      let error = null as Error | null;
+      if (Object.keys(data).length > schema.maxProperties) error = { message: `maxProperties "${schema.maxProperties}" failed` };
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('maxProperties', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.minProperties !== undefined) {
-      if (Object.keys(data).length < schema.minProperties) errors.push({ message: `minProperties "${schema.minProperties}" failed` });
+      ctx.pushSubPath('minProperties');
+
+      let error = null as Error | null;
+      if (Object.keys(data).length < schema.minProperties) error = { message: `minProperties "${schema.minProperties}" failed` };
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('minProperties', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.required) {
-      for (const key of schema.required) {
-        if (data[key] === undefined) errors.push({ message: `required "${key}" failed` });
+      ctx.pushSubPath('required');
+
+      for (let i=0; i<schema.required.length; i++) {
+        ctx.pushSubPath(i.toString());
+
+        const key = schema.required[i];
+        const error =  data[key] === undefined ? { message: `required "${key}" failed` } : null;
+        if (error) errors.push(error);
+        if (this.onValidate) this.onValidate('required', ctx.pointer, error);
+
+        ctx.popSubPath();
       }
+
+      ctx.popSubPath();
     }
 
     if (schema.dependencies !== undefined) {
+      ctx.pushSubPath('dependencies');
       for (const key of Object.keys(schema.dependencies)) {
         if (data[key] === undefined) continue;
 
+        ctx.pushSubPath(key);
+
         const subSchema = schema.dependencies[key];
         if (Array.isArray(subSchema)) {
-          for (let i=0; i<subSchema.length; i++) {
-            const k = subSchema[i];
-            if (data[k] === undefined) errors.push({ message: `dependencies "${key}" failed` });
+          const props = subSchema;
+          for (let i=0; i<props.length; i++) {
+            ctx.pushSubPath(i.toString());
+
+            const k = props[i];
+            const error = data[k] === undefined ? { message: `dependencies "${key}" failed` } : null;
+            if (error) errors.push(error);
+            if (this.onValidate) this.onValidate('dependencies', ctx.pointer, error);
+
+            ctx.popSubPath();
           }
         } else {
           const errs = this.validateRoot(ctx, subSchema, data);
-          if (errs.length > 0) errors.push({ message: `dependencies "${key}" failed` });
+          const error = errs.length > 0 ? { message: `dependencies "${key}" failed`, childErrors: errs } : null;
+          if (error) errors.push(error);
+          if (this.onValidate) this.onValidate('dependencies', ctx.pointer, error);
         }
+
+        ctx.popSubPath();
       }
+      ctx.popSubPath();
     }
 
     return errors;
@@ -272,50 +404,95 @@ export default class Validator {
       if (Array.isArray(schema.items)) {
         const len = Math.min(Object.keys(data).length, schema.items.length);
         let i = 0;
+        ctx.pushSubPath('items');
         for (; i < len; i++) {
+          ctx.pushSubPath(i.toString());
+
           const errs = this.validateRoot(ctx, schema.items[i], data[i]);
-          if (errs.length > 0) errors.push({ message: `items failed` });
+          let error = errs.length > 0 ? { message: `items failed`, childErrors: errs } : null;
+
+          if (error) errors.push(error);
+          if (this.onValidate) this.onValidate('items', ctx.pointer, error);
+
+          ctx.popSubPath();
         }
+        ctx.popSubPath();
 
         if (typeof schema.additionalItems === 'boolean' && !schema.additionalItems) {
-          if (i < Object.keys(data).length) errors.push({ message: `additionalItems failed` });
+          ctx.pushSubPath('additionalItems');
+
+          let error = null as Error | null;
+          if (i < Object.keys(data).length) error = { message: `additionalItems failed` };
+
+          if (error) errors.push(error);
+          if (this.onValidate) this.onValidate('additionalItems', ctx.pointer, error);
+
+          ctx.popSubPath();
         }
 
         if (typeof schema.additionalItems === 'object' && schema.additionalItems) {
+          ctx.pushSubPath('additionalItems');
+          let errs = [] as Error[];
           for (; i < Object.keys(data).length; i++) {
-            const errs = this.validateRoot(ctx, schema.additionalItems, data[i])
-            if (errs.length > 0) errors.push({ message: `additionalItems failed` });
+            errs = errs.concat(this.validateRoot(ctx, schema.additionalItems, data[i]));
           }
+
+          let error = errs.length > 0 ? { message: `additionalItems failed`, childErrors: errs } : null;
+          if (error) errors.push(error);
+          if (this.onValidate) this.onValidate('additionalItems', ctx.pointer, error);
+
+          ctx.popSubPath();
         }
       } else {
+        ctx.pushSubPath('items');
+
+        let errs = [] as Error[];
         for (const val of data) {
-          const errs = this.validateRoot(ctx, schema.items, val)
-          if (errs.length > 0) errors.push({ message: `items failed` });
+          errs = errs.concat(this.validateRoot(ctx, schema.items, val));
         }
+
+        let error =  errs.length > 0 ? { message: `items failed` } : null;
+        if (error) errors.push(error);
+        if (this.onValidate) this.onValidate('items', ctx.pointer, error);
+
+        ctx.popSubPath();
       }
     }
 
     if (schema.uniqueItems) {
-      const len = data.length;
-      let failed = false;
-      LOOP:
-      for (let i = 0; i < len - 1; i++) {
-        for (let j = i + 1; j < len; j++) {
-          if (equal(data[i], data[j], { strict: true })) {
-            failed = true;
-            break LOOP;
-          }
-        }
-      }
-      if (failed) errors.push({ message: `uniqueItems failed` });
+      ctx.pushSubPath('uniqueItems');
+
+      let error = null as Error | null;
+      if (!isUnique(data)) error = { message: `uniqueItems failed` };
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('uniqueItems', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.maxItems !== undefined) {
-      if (data.length > schema.maxItems) errors.push({ message: `maxItems "${schema.maxItems}" failed` });
+      ctx.pushSubPath('maxItems');
+
+      let error = null as Error | null;
+      if (data.length > schema.maxItems) error = { message: `maxItems "${schema.maxItems}" failed` };
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('maxItems', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.minItems !== undefined) {
-      if (data.length < schema.minItems) errors.push({ message: `minItems "${schema.minItems}" failed` });
+      ctx.pushSubPath('minItems');
+
+      let error = null as Error | null;
+      if (data.length < schema.minItems) error = { message: `minItems "${schema.minItems}" failed` };
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('minItems', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     return errors;
@@ -325,15 +502,39 @@ export default class Validator {
     const errors = [] as Error[];
 
     if (schema.maxLength !== undefined) {
-      if (stringLength(data) > schema.maxLength) errors.push({ message: `maxLength "${schema.maxLength}" failed` });
+      ctx.pushSubPath('maxLength');
+
+      let error = null as Error | null;
+      if (stringLength(data) > schema.maxLength) error = { message: `maxLength "${schema.maxLength}" failed` };
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('maxLength', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.minLength !== undefined) {
+      ctx.pushSubPath('minLength');
+
+      let error = null as Error | null;
       if (stringLength(data) < schema.minLength) errors.push({ message: `minLength "${schema.minLength}" failed` });
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('minLength', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.pattern !== undefined) {
+      ctx.pushSubPath('pattern');
+
+      let error = null as Error | null;
       if (!new RegExp(schema.pattern).test(data)) errors.push({ message: `pattern "${schema.pattern}" failed` });
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('pattern', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     return errors;
@@ -342,24 +543,48 @@ export default class Validator {
   validateNumber(ctx: Context, schema: Schema, data: number): Error[] {
     const errors = [] as Error[];
     if (schema.maximum !== undefined) {
+      ctx.pushSubPath('maximum');
+
+      let error = null as Error | null;
       if (schema.exclusiveMaximum) {
-        if (data >= schema.maximum) errors.push({ message: `exclusive maximum "${schema.maximum}" failed` });
+        if (data >= schema.maximum) error = { message: `exclusive maximum "${schema.maximum}" failed` };
       } else {
-        if (data > schema.maximum) errors.push({ message: `maximum "${schema.maximum}" failed` });
+        if (data > schema.maximum) error = { message: `maximum "${schema.maximum}" failed` };
       }
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('maximum', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.minimum !== undefined) {
+      ctx.pushSubPath('minimum');
+
+      let error = null as Error | null;
       if (schema.exclusiveMinimum) {
-        if (data <= schema.minimum) errors.push({ message: `exclusive minimum "${schema.minimum}" failed` });
+        if (data <= schema.minimum) error = { message: `exclusive minimum "${schema.minimum}" failed` };
       } else {
-        if (data < schema.minimum) errors.push({ message: `minimum "${schema.minimum}" failed` });
+        if (data < schema.minimum) error = { message: `minimum "${schema.minimum}" failed` };
       }
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('minimum', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     if (schema.multipleOf !== undefined) {
+      ctx.pushSubPath('multipleOf');
+
+      let error = null as Error | null;
       const quotient = data / schema.multipleOf;
-      if (quotient !== parseInt(quotient.toString())) errors.push({ message: `multipleOf "${schema.multipleOf}" failed` });
+      if (quotient !== parseInt(quotient.toString())) error = { message: `multipleOf "${schema.multipleOf}" failed` };
+
+      if (error) errors.push(error);
+      if (this.onValidate) this.onValidate('multipleOf', ctx.pointer, error);
+
+      ctx.popSubPath();
     }
 
     return errors;
@@ -400,6 +625,18 @@ function stringLength(s: string): number {
   return stringToArray(s).length;
 }
 
-function stringToArray (str: string): string[] {
+function stringToArray(str: string): string[] {
     return str.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\uD800-\uDFFF]/g) || [];
+}
+
+function isUnique(items: any[]): boolean {
+  const len = items.length;
+
+  for (let i = 0; i < len - 1; i++) {
+    for (let j = i + 1; j < len; j++) {
+      if (equal(items[i], items[j], { strict: true })) return false;
+    }
+  }
+
+  return true;
 }

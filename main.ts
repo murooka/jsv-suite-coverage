@@ -16,6 +16,9 @@ try {
 }
 
 const validator = new Validator();
+validator.onValidate = (keyword: string, pointer: string, error: Error | null) => {
+  console.log(keyword, pointer, !error);
+};
 const metaSchema = JSON.parse(fs.readFileSync('./example/schema/draft4.json').toString());
 validator.addSchema(metaSchema.id, metaSchema);
 
