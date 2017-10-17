@@ -3,10 +3,10 @@ const path    = require('path');
 const rootDir = path.resolve(__dirname);
 
 module.exports = {
-  entry: path.join(rootDir, 'src', 'index.ts'),
+  entry: path.join(rootDir, 'dist', 'main.js'),
   output: {
     path: path.join(rootDir, 'dist'),
-    filename: 'index.js',
+    filename: 'bundle.js',
   },
   module: {
     rules: [

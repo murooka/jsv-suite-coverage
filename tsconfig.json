@@ -14,7 +14,8 @@
         "types": ["node"]
     },
     "include": [
-        "main.ts",
+        "validate.ts",
+        "coverage.ts",
         "lib/**/*"
     ]
 }

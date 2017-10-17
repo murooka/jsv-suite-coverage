@@ -30,7 +30,8 @@ class Context {
   }
 }
 
-interface Schema {
+export interface Schema {
+  id?: string;
   $ref?: string;
   allOf?: Schema[];
   anyOf?: Schema[];
@@ -44,7 +45,7 @@ interface Schema {
   maxProperties?: number;
   minProperties?: number;
   required?: string[];
-  dependencies: { [k: string]: string[] | Schema };
+  dependencies?: { [k: string]: string[] | Schema };
   items?: Schema | Schema[];
   additionalItems?: boolean | Schema;
   uniqueItems?: boolean;
@@ -112,11 +113,14 @@ export default class Validator {
     this.schemaMap[trimmedId] = schema;
   }
 
+  doCallback(ctx: Context, keyword: string, error: Error | null) {
+    if (this.onValidate) this.onValidate(keyword, `${ctx.id}#${ctx.pointer}`, error);
+  }
+
   validate(ref: string, data: any): Result {
     const ctx = Context.fromRef(ref);
     const schema = JsonPointer.get(this.schemaMap[ctx.id], ctx.pointer) as Schema;
     const errors = this.validateRoot(ctx, schema, data);
-    // if (errors.length > 0) console.log(displayErrors(errors));
 
     return { isValid: errors.length === 0 };
   }
@@ -132,7 +136,7 @@ export default class Validator {
       const newSchema = JsonPointer.get(this.schemaMap[newCtx.id], newCtx.pointer) as Schema;
       const errs = this.validateRoot(newCtx, newSchema, data);
 
-      if (this.onValidate) this.onValidate('$ref', ctx.pointer, { message: `$ref failed`, childErrors: errs });
+      this.doCallback(ctx, '$ref', { message: `$ref failed`, childErrors: errs });
 
       ctx.popSubPath();
 
@@ -152,7 +156,7 @@ export default class Validator {
 
       const error = childErrors.length > 0 ? { message: `allOf failed:`, childErrors } : null;
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('allOf', ctx.pointer, error);
+      this.doCallback(ctx, 'allOf', error);
 
       ctx.popSubPath();
     }
@@ -174,7 +178,7 @@ export default class Validator {
 
       const error = passed ? null : { message: `anyOf failed` };
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('anyOf', ctx.pointer, error);
+      this.doCallback(ctx, 'anyOf', error);
 
       ctx.popSubPath();
     }
@@ -192,7 +196,7 @@ export default class Validator {
 
       const error = count !== 1 ? { message: `oneOf failed, ${count} passed` } : null;
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('oneOf', ctx.pointer, error);
+      this.doCallback(ctx, 'oneOf', error);
 
       ctx.popSubPath();
     }
@@ -203,7 +207,7 @@ export default class Validator {
       const errs = this.validateRoot(ctx, schema.not, data);
       const error = errs.length === 0 ? { message: `not failed` } : null;
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('not', ctx.pointer, error);
+      this.doCallback(ctx, 'not', error);
 
       ctx.popSubPath();
     }
@@ -235,7 +239,7 @@ export default class Validator {
       const types = Array.isArray(type) ? type : [type];
       const error = this.validateType(ctx, types, data);
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('type', ctx.pointer, error);
+      this.doCallback(ctx, 'type', error);
 
       ctx.popSubPath();
     }
@@ -247,7 +251,7 @@ export default class Validator {
       const error = this.validateEnum(ctx, enums, data);
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('enum', ctx.pointer, error);
+      this.doCallback(ctx, 'enum', error);
 
       ctx.popSubPath();
     }
@@ -271,7 +275,6 @@ export default class Validator {
         const errs = this.validateRoot(ctx, schema.properties[key], data[key]);
         const error = errs.length > 0 ? { message: `properties "${key}" failed`, childErrors: errs } : null;
         if (error) errors.push(error);
-        if (this.onValidate) this.onValidate('properties', ctx.pointer, error);
 
         ctx.popSubPath();
       }
@@ -290,7 +293,7 @@ export default class Validator {
           const errs = this.validateRoot(ctx, subSchema, data[key]);
           const error = errs.length > 0 ? { message: `patternProperties "${pattern}" failed`, childErrors: errs } : null;
           if (error) errors.push(error);
-          if (this.onValidate) this.onValidate('patternProperties', ctx.pointer, error);
+          this.doCallback(ctx, 'patternProperties', error);
         }
         ctx.popSubPath();
       }
@@ -303,7 +306,7 @@ export default class Validator {
       let error = null as Error | null;
       if (Object.keys(checked).length < Object.keys(data).length) error = { message: `additionalProperties failed` };
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('additionalProperties', ctx.pointer, error);
+      this.doCallback(ctx, 'additionalProperties', error);
 
       ctx.popSubPath();
     }
@@ -317,7 +320,6 @@ export default class Validator {
         const errs = this.validateRoot(ctx, schema.additionalProperties, data[key]);
         const error = errs.length > 0 ? { message: `additionalProperties failed`, childErrors: errs } : null;
         if (error) errors.push(error);
-        if (this.onValidate) this.onValidate('additionalProperties', ctx.pointer, error);
       }
 
       ctx.popSubPath();
@@ -329,7 +331,7 @@ export default class Validator {
       let error = null as Error | null;
       if (Object.keys(data).length > schema.maxProperties) error = { message: `maxProperties "${schema.maxProperties}" failed` };
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('maxProperties', ctx.pointer, error);
+      this.doCallback(ctx, 'maxProperties', error);
 
       ctx.popSubPath();
     }
@@ -340,7 +342,7 @@ export default class Validator {
       let error = null as Error | null;
       if (Object.keys(data).length < schema.minProperties) error = { message: `minProperties "${schema.minProperties}" failed` };
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('minProperties', ctx.pointer, error);
+      this.doCallback(ctx, 'minProperties', error);
 
       ctx.popSubPath();
     }
@@ -348,16 +350,20 @@ export default class Validator {
     if (schema.required) {
       ctx.pushSubPath('required');
 
+      const errs = [] as Error[];
       for (let i=0; i<schema.required.length; i++) {
         ctx.pushSubPath(i.toString());
 
         const key = schema.required[i];
         const error =  data[key] === undefined ? { message: `required "${key}" failed` } : null;
-        if (error) errors.push(error);
-        if (this.onValidate) this.onValidate('required', ctx.pointer, error);
+        if (error) errs.push(error);
 
         ctx.popSubPath();
       }
+
+      const error = errs.length > 0 ? { message: `required failed`, childErrors: errs } : null;
+      if (error) errors.push(error);
+      this.doCallback(ctx, 'required', error);
 
       ctx.popSubPath();
     }
@@ -372,21 +378,24 @@ export default class Validator {
         const subSchema = schema.dependencies[key];
         if (Array.isArray(subSchema)) {
           const props = subSchema;
+          const errs = [] as Error[];
           for (let i=0; i<props.length; i++) {
             ctx.pushSubPath(i.toString());
 
             const k = props[i];
             const error = data[k] === undefined ? { message: `dependencies "${key}" failed` } : null;
-            if (error) errors.push(error);
-            if (this.onValidate) this.onValidate('dependencies', ctx.pointer, error);
+            if (error) errs.push(error);
 
             ctx.popSubPath();
           }
+
+          const error = errs.length > 0 ? { message: `dependencies failed`, childErrors: errs } : null;
+          if (error) errors.push(error);
+          this.doCallback(ctx, 'dependencies', error);
         } else {
           const errs = this.validateRoot(ctx, subSchema, data);
           const error = errs.length > 0 ? { message: `dependencies "${key}" failed`, childErrors: errs } : null;
           if (error) errors.push(error);
-          if (this.onValidate) this.onValidate('dependencies', ctx.pointer, error);
         }
 
         ctx.popSubPath();
@@ -412,7 +421,6 @@ export default class Validator {
           let error = errs.length > 0 ? { message: `items failed`, childErrors: errs } : null;
 
           if (error) errors.push(error);
-          if (this.onValidate) this.onValidate('items', ctx.pointer, error);
 
           ctx.popSubPath();
         }
@@ -425,7 +433,7 @@ export default class Validator {
           if (i < Object.keys(data).length) error = { message: `additionalItems failed` };
 
           if (error) errors.push(error);
-          if (this.onValidate) this.onValidate('additionalItems', ctx.pointer, error);
+          this.doCallback(ctx, 'additionalItems', error);
 
           ctx.popSubPath();
         }
@@ -439,7 +447,7 @@ export default class Validator {
 
           let error = errs.length > 0 ? { message: `additionalItems failed`, childErrors: errs } : null;
           if (error) errors.push(error);
-          if (this.onValidate) this.onValidate('additionalItems', ctx.pointer, error);
+          this.doCallback(ctx, 'additionalItems', error);
 
           ctx.popSubPath();
         }
@@ -453,7 +461,6 @@ export default class Validator {
 
         let error =  errs.length > 0 ? { message: `items failed` } : null;
         if (error) errors.push(error);
-        if (this.onValidate) this.onValidate('items', ctx.pointer, error);
 
         ctx.popSubPath();
       }
@@ -466,7 +473,7 @@ export default class Validator {
       if (!isUnique(data)) error = { message: `uniqueItems failed` };
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('uniqueItems', ctx.pointer, error);
+      this.doCallback(ctx, 'uniqueItems', error);
 
       ctx.popSubPath();
     }
@@ -478,7 +485,7 @@ export default class Validator {
       if (data.length > schema.maxItems) error = { message: `maxItems "${schema.maxItems}" failed` };
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('maxItems', ctx.pointer, error);
+      this.doCallback(ctx, 'maxItems', error);
 
       ctx.popSubPath();
     }
@@ -490,7 +497,7 @@ export default class Validator {
       if (data.length < schema.minItems) error = { message: `minItems "${schema.minItems}" failed` };
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('minItems', ctx.pointer, error);
+      this.doCallback(ctx, 'minItems', error);
 
       ctx.popSubPath();
     }
@@ -508,7 +515,7 @@ export default class Validator {
       if (stringLength(data) > schema.maxLength) error = { message: `maxLength "${schema.maxLength}" failed` };
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('maxLength', ctx.pointer, error);
+      this.doCallback(ctx, 'maxLength', error);
 
       ctx.popSubPath();
     }
@@ -520,7 +527,7 @@ export default class Validator {
       if (stringLength(data) < schema.minLength) errors.push({ message: `minLength "${schema.minLength}" failed` });
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('minLength', ctx.pointer, error);
+      this.doCallback(ctx, 'minLength', error);
 
       ctx.popSubPath();
     }
@@ -532,7 +539,7 @@ export default class Validator {
       if (!new RegExp(schema.pattern).test(data)) errors.push({ message: `pattern "${schema.pattern}" failed` });
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('pattern', ctx.pointer, error);
+      this.doCallback(ctx, 'pattern', error);
 
       ctx.popSubPath();
     }
@@ -553,7 +560,7 @@ export default class Validator {
       }
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('maximum', ctx.pointer, error);
+      this.doCallback(ctx, 'maximum', error);
 
       ctx.popSubPath();
     }
@@ -569,7 +576,7 @@ export default class Validator {
       }
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('minimum', ctx.pointer, error);
+      this.doCallback(ctx, 'minimum', error);
 
       ctx.popSubPath();
     }
@@ -582,7 +589,7 @@ export default class Validator {
       if (quotient !== parseInt(quotient.toString())) error = { message: `multipleOf "${schema.multipleOf}" failed` };
 
       if (error) errors.push(error);
-      if (this.onValidate) this.onValidate('multipleOf', ctx.pointer, error);
+      this.doCallback(ctx, 'multipleOf', error);
 
       ctx.popSubPath();
     }

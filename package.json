@@ -16,6 +16,7 @@
   "dependencies": {
     "colors": "^1.1.2",
     "deep-equal": "^1.0.1",
-    "jsonpointer": "^4.0.1"
+    "jsonpointer": "^4.0.1",
+    "node-getopt": "^0.2.3"
   }
 }
