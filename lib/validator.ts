@@ -32,6 +32,7 @@ class Context {
 
 export interface Schema {
   id?: string;
+  definitions?: { [k: string]: Schema };
   $ref?: string;
   allOf?: Schema[];
   anyOf?: Schema[];
@@ -212,7 +213,7 @@ export default class Validator {
       ctx.popSubPath();
     }
 
-    if (typeof data === 'object' && !Array.isArray(data)) {
+    if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
       const errs = this.validateObject(ctx, schema, data);
       errors = errors.concat(errs);
     }

@@ -23,7 +23,7 @@ if (suiteDirs.length === 0) {
 }
 
 const schemas = listAllFiles(schemaDirs, /\.json$/).map(loadJSON);
-const suites = Array.prototype.concat.apply([], listAllFiles(suiteDirs, /\.json$/).map(loadJSON));
+const suitesGroups = listAllFiles(suiteDirs, /\.json$/).map(f => ({ filename: f, suites: loadJSON(f) }));
 
 const validator = new Validator();
 for (const schema of schemas) {
@@ -32,15 +32,18 @@ for (const schema of schemas) {
 
 let totalCount = 0;
 let failCount = 0;
-for (const suite of suites) {
-  validator.putSchema('@entry', suite.schema);
-  for (const test of suite.tests) {
-    totalCount += 1;
-    const { isValid } = validator.validate('@entry#', test.data);
-    if (isValid == test.valid) {
-    } else {
-      failCount += 1;
-      console.log(`  [${color.red('FAIL')}] "${suite.description}" "${test.description}"`);
+for (const { filename, suites } of suitesGroups) {
+  for (const suite of suites) {
+    validator.putSchema('@entry', suite.schema);
+    for (const test of suite.tests) {
+      totalCount += 1;
+      const { isValid } = validator.validate('@entry#', test.data);
+      if (isValid == test.valid) {
+        // console.log(`  [${color.green('PASS')}] ${filename} "${suite.description}" "${test.description}"`);
+      } else {
+        failCount += 1;
+        console.log(`  [${color.red('FAIL')}] ${filename} "${suite.description}" "${test.description}"`);
+      }
     }
   }
 }

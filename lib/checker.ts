@@ -47,6 +47,17 @@ function enumerate(ctx: Context, schema: Schema): string[] {
     if (schema.$ref) rv.push(ctx.ref);
   });
 
+  ctx.withSubPath('definitions', ctx => {
+    if (schema.definitions) {
+      for (const key of Object.keys(schema.definitions)) {
+        const scm = schema.definitions[key];
+        ctx.withSubPath(key, ctx => {
+          rv = rv.concat(enumerate(ctx, scm));
+        });
+      }
+    }
+  });
+
   ctx.withSubPath('allOf', ctx => {
     if (schema.allOf) {
       rv.push(ctx.ref);
