@@ -1,4 +1,5 @@
-import { Schema } from './validator';
+import Validator         from './validator';
+import { Schema, Suite } from './entity';
 
 class Context {
   id: string;
@@ -262,4 +263,71 @@ function enumerate(ctx: Context, schema: Schema): string[] {
   });
 
   return rv;
+}
+
+function schemaComparator(a: Schema, b: Schema): number {
+  const aid = a.id || '';
+  const bid = b.id || '';
+  return aid > bid ? 1 : aid < bid ? -1 : 0;
+}
+
+function padStart(s: string, len: number): string {
+  for (let i = s.length; i<len; i++) {
+    s = ' ' + s;
+  }
+  return s;
+}
+
+export function measureCoverage(schemas: Schema[], suites: Suite[], targets: Schema[]) {
+  const checked = {} as { [k: string]: { [b: string]: boolean} };
+  const validator = new Validator();
+  validator.onValidate = (keyword: string, pointer: string, error: Error | null) => {
+    checked[pointer] = checked[pointer] || {};
+    checked[pointer][error ? 'false' : 'true'] = true;
+  };
+  for (const schema of schemas) {
+    if (schema.id) validator.addSchema(schema.id, schema);
+  }
+  
+  for (const suite of suites) {
+    validator.putSchema('@entry', suite.schema);
+    for (const test of suite.tests) {
+      const { isValid } = validator.validate('@entry', test.data);
+      if (isValid != test.valid) {
+        // console.log(`  [${color.red('FAIL')}] "${suite.description}" "${test.description}"`);
+      }
+    }
+  }
+  
+  for (const schema of targets.sort(schemaComparator)) {
+    const pointers = enumeratePointers(schema);
+    // if (1 > 0) { console.log(schema); console.log(pointers); continue; }
+    let passed = 0;
+    let failed = 0;
+    const details = [] as string[];
+    for (const pointer of pointers) {
+      if (1 < 0) {
+        for (const b of [true, false]) {
+          if (checked[pointer] && checked[pointer][b.toString()]) {
+            passed++;
+          } else {
+            failed++;
+            details.push(`  - ${pointer}: ${b ? 'valid' : 'invalid'} case`);
+          }
+        }
+      } else {
+        if (checked[pointer]) {
+          passed++;
+        } else {
+          failed++;
+          details.push(`  - ${pointer}`);
+        }
+      }
+    }
+    const percent = Math.floor(100*passed/(passed+failed));
+    console.log(`${padStart(`${percent}`, 3)}% [${passed}/${passed + failed}] ${schema.id}`);
+    // console.log(`${schema.id}:`);
+    // console.log(`  ${passed} of ${passed + failed} covered`);
+    // for (const d of details) console.log(d);
+  }
 }
