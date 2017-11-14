@@ -33,7 +33,7 @@ class Context {
 }
 
 
-interface Error {
+export interface Error {
   message: string;
   childErrors?: Error[],
 }

@@ -1,4 +1,4 @@
-import Validator         from './validator';
+import Validator, { Error } from './validator';
 import { Schema, Suite } from './entity';
 
 class Context {
@@ -278,7 +278,24 @@ function padStart(s: string, len: number): string {
   return s;
 }
 
-export function measureCoverage(schemas: Schema[], suites: Suite[], targets: Schema[]) {
+export class CoverageResult {
+  id: string;
+  pointer: string;
+  succeeded: boolean;
+  failed: boolean;
+
+  constructor(id: string, pointer: string) {
+    this.id = id;
+    this.pointer = pointer;
+
+    this.succeeded = false;
+    this.failed = false;
+  }
+}
+
+export type CoverageResultSet = { [id: string]:  CoverageResult[] };
+
+export function measureCoverage(schemas: Schema[], suites: Suite[], targets: Schema[]): CoverageResultSet {
   const checked = {} as { [k: string]: { [b: string]: boolean} };
   const validator = new Validator();
   validator.onValidate = (keyword: string, pointer: string, error: Error | null) => {
@@ -299,35 +316,18 @@ export function measureCoverage(schemas: Schema[], suites: Suite[], targets: Sch
     }
   }
   
+  const results: CoverageResultSet = {};
   for (const schema of targets.sort(schemaComparator)) {
+    const id = schema.id || '';
     const pointers = enumeratePointers(schema);
-    // if (1 > 0) { console.log(schema); console.log(pointers); continue; }
-    let passed = 0;
-    let failed = 0;
-    const details = [] as string[];
     for (const pointer of pointers) {
-      if (1 < 0) {
-        for (const b of [true, false]) {
-          if (checked[pointer] && checked[pointer][b.toString()]) {
-            passed++;
-          } else {
-            failed++;
-            details.push(`  - ${pointer}: ${b ? 'valid' : 'invalid'} case`);
-          }
-        }
-      } else {
-        if (checked[pointer]) {
-          passed++;
-        } else {
-          failed++;
-          details.push(`  - ${pointer}`);
-        }
-      }
+      const result = new CoverageResult(schema.id as string, pointer);
+      if (checked[pointer] && checked[pointer]['true'])  result.succeeded = true;
+      if (checked[pointer] && checked[pointer]['false']) result.failed = true;
+      results[id] = results[id] || [];
+      results[id].push(result);
     }
-    const percent = Math.floor(100*passed/(passed+failed));
-    console.log(`${padStart(`${percent}`, 3)}% [${passed}/${passed + failed}] ${schema.id}`);
-    // console.log(`${schema.id}:`);
-    // console.log(`  ${passed} of ${passed + failed} covered`);
-    // for (const d of details) console.log(d);
   }
+
+  return results;
 }
