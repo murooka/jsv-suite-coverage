@@ -8,15 +8,17 @@ import { measureCoverage } from './lib/checker';
 import { createReporter } from './lib/reporter/factory';
 
 const { options } = getopt.create([
-  ['', 'schema=ARG+', 'schema file/directory'],
-  ['', 'suite=ARG+', 'suite file/directory'],
-  ['', 'target=ARG+', 'coverage target file/directory'],
-  ['h', 'help', 'display help'],
+  ['', 'schema=ARG+',  'schema file/directory'],
+  ['', 'suite=ARG+',   'suite file/directory'],
+  ['', 'target=ARG+',  'coverage target file/directory'],
+  ['', 'reporter=ARG', 'reporter (html or cli)'],
+  ['h', 'help',        'display help'],
 ]).bindHelp().parseSystem();
 
 const schemaDirs = options['schema'] || [];
 const suiteDirs = options['suite'] || [];
 const targetDirs = options['target'] || schemaDirs || [];
+const reporterType = options['reporter'] || 'html';
 
 if (suiteDirs.length === 0) {
   console.log('error: suite-dir is not specified');
@@ -28,7 +30,7 @@ const suites = Array.prototype.concat.apply([], listAllFiles(suiteDirs, /\.json$
 const targets = listAllFiles(targetDirs, /\.json$/).map(loadJSON);
 
 const results = measureCoverage(schemas, suites, targets);
-const reporter = createReporter('cli');
+const reporter = createReporter(reporterType);
 reporter.report(results);
 
 

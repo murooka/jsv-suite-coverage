@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>JSON Schema Coverage</title>
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb"
+    crossorigin="anonymous">
+</head>
+
+<body>
+
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <a class="navbar-brand" href="#">JSON Schema Coverage</a>
+  </nav>
+
+  <div class="container">
+    <div class="row">
+
+      <h2>Result</h2>
+      <table class="table table-bordered table-sm" id="table-1">
+        <thead>
+          <tr>
+            <th scope="col">id</th>
+            <th scope="col">target keyword</th>
+            <th scope="col">success coverage</th>
+            <th scope="col">failure coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (let i=0; i<results.length; i++) { %>
+            <% let r = results[i] %>
+            <tr class="collapsed" data-toggle="collapse" data-target="#detail-<%= i %>" aria-expanded="true" aria-controls="detail-<%= i %>">
+              <td><%= r.id %></td>
+              <td class="text-right"><%= r.target %></td>
+              <td class="text-right font-weight-bold text-<%= r.successCoverage > 0.5 ? 'success' : r.successCoverage > 0.25 ? 'warning' : 'danger' %>"><%= r.successCoverage.toFixed(3) %></td>
+              <td class="text-right font-weight-bold text-<%= r.failureCoverage > 0.5 ? 'success' : r.failureCoverage > 0.25 ? 'warning' : 'danger' %>"><%= r.failureCoverage.toFixed(3) %></td>
+            </tr>
+            <tr>
+            <td colspan="5">
+              <div id="detail-<%= i %>" class="collapse">
+                <table class="table table-bordered table-sm">
+                  <thead>
+                    <tr>
+                      <th>pointer</th>
+                      <th>success case</th>
+                      <th>fail case</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const detail of r.details) { %>
+                      <tr>
+                        <td><%= detail.pointer %></td>
+                        <% if (detail.success) { %>
+                          <td><span class="badge badge-success">OK</span></td>
+                        <% } else { %>
+                          <td><span class="badge badge-danger">NG</span></td>
+                        <% } %>
+                        <% if (detail.failure) { %>
+                          <td><span class="badge badge-success">OK</span></td>
+                        <% } else { %>
+                          <td><span class="badge badge-danger">NG</span></td>
+                        <% } %>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+    crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.3/umd/popper.min.js" integrity="sha384-vFJXuSJphROIrBnz7yo7oB41mKfc8JzQZiCq4NCceLEaO4IHwicKwpJf9c9IpFgh"
+    crossorigin="anonymous"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/js/bootstrap.min.js" integrity="sha384-alpBpkh1PFOepccYVYDB4do5UnbKysX5WZXm3XxPqe5iKTfUKjNkCk9SaVuEZflJ"
+    crossorigin="anonymous"></script>
+</body>
+
+</html>

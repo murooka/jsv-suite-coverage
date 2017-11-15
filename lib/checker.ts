@@ -44,9 +44,11 @@ export function enumeratePointers(schema: Schema): string[] {
 function enumerate(ctx: Context, schema: Schema): string[] {
   let rv = [] as string[];
 
+  /*
   ctx.withSubPath('$ref', ctx => {
     if (schema.$ref) rv.push(ctx.ref);
   });
+  */
 
   ctx.withSubPath('definitions', ctx => {
     if (schema.definitions) {
