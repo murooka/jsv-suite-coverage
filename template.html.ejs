@@ -9,6 +9,31 @@
 
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb"
     crossorigin="anonymous">
+
+  <style>
+    .j-row {
+      background: rgb(249,249,251);
+      border-left: 1px solid rgb(196,196,211);
+      border-right: 1px solid rgb(196,196,211);
+      border-bottom: 1px solid rgb(196,196,211);
+
+      cursor: pointer;
+    }
+    .j-row-hover:hover {
+      background: rgb(231,231,237);
+    }
+    .j-row-deep {
+      background: rgb(231,231,237);
+    }
+    .j-row:first-child {
+      border-top: 1px solid rgb(196,196,211);
+    }
+    .j-cell {
+    }
+    .j-cell:not(:first-child) {
+      border-left: 1px solid rgb(196,196,211);
+    }
+  </style>
 </head>
 
 <body>
@@ -18,62 +43,50 @@
   </nav>
 
   <div class="container">
-    <div class="row">
+    <h2>Result</h2>
+    <div>
+      <div class="row j-row">
+        <div class="col-9 j-cell"><b>id</b></div>
+        <div class="col-1 j-cell"><b>target keyword</b></div>
+        <div class="col-1 j-cell"><b>success coverage</b></div>
+        <div class="col-1 j-cell"><b>failure coverage</b></div>
+      </div>
+      <% for (let i=0; i<results.length; i++) { %>
+        <% const r = results[i] %>
+        <div class="row j-row j-row-hover collapsed" data-toggle="collapse" data-target="#detail-<%= i %>" aria-expanded="true" aria-controls="detail-<%= i %>">
+          <div class="col-9 j-cell" style="overflow:auto;"><%= r.id %></div>
+          <div class="col-1 j-cell text-right"><%= r.target %></div>
+          <% const successState = r.successCoverage > 0.5 ? 'success' : r.successCoverage > 0.25 ? 'warning' : 'danger' %>
+          <div class="col-1 j-cell text-right font-weight-bold text-<%= successState %>"><%= r.successCoverage.toFixed(3) %></div>
+          <% const failureState = r.failureCoverage > 0.5 ? 'success' : r.failureCoverage > 0.25 ? 'warning' : 'danger' %>
+          <div class="col-1 j-cell text-right font-weight-bold text-<%= failureState %>"><%= r.failureCoverage.toFixed(3) %></div>
+        </div>
+        <div id="detail-<%= i %>" class="collapse row j-row" style="padding:16px;">
+          <div class="container">
+          <div class="row j-row j-row-deep">
+            <div class="col-10 j-cell">pointer</div>
+            <div class="col-1 j-cell">success case</div>
+            <div class="col-1 j-cell">fail case</div>
+          </div>
 
-      <h2>Result</h2>
-      <table class="table table-bordered table-sm" id="table-1">
-        <thead>
-          <tr>
-            <th scope="col">id</th>
-            <th scope="col">target keyword</th>
-            <th scope="col">success coverage</th>
-            <th scope="col">failure coverage</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% for (let i=0; i<results.length; i++) { %>
-            <% let r = results[i] %>
-            <tr class="collapsed" data-toggle="collapse" data-target="#detail-<%= i %>" aria-expanded="true" aria-controls="detail-<%= i %>">
-              <td><%= r.id %></td>
-              <td class="text-right"><%= r.target %></td>
-              <td class="text-right font-weight-bold text-<%= r.successCoverage > 0.5 ? 'success' : r.successCoverage > 0.25 ? 'warning' : 'danger' %>"><%= r.successCoverage.toFixed(3) %></td>
-              <td class="text-right font-weight-bold text-<%= r.failureCoverage > 0.5 ? 'success' : r.failureCoverage > 0.25 ? 'warning' : 'danger' %>"><%= r.failureCoverage.toFixed(3) %></td>
-            </tr>
-            <tr>
-            <td colspan="5">
-              <div id="detail-<%= i %>" class="collapse">
-                <table class="table table-bordered table-sm">
-                  <thead>
-                    <tr>
-                      <th>pointer</th>
-                      <th>success case</th>
-                      <th>fail case</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const detail of r.details) { %>
-                      <tr>
-                        <td><%= detail.pointer %></td>
-                        <% if (detail.success) { %>
-                          <td><span class="badge badge-success">OK</span></td>
-                        <% } else { %>
-                          <td><span class="badge badge-danger">NG</span></td>
-                        <% } %>
-                        <% if (detail.failure) { %>
-                          <td><span class="badge badge-success">OK</span></td>
-                        <% } else { %>
-                          <td><span class="badge badge-danger">NG</span></td>
-                        <% } %>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              </div>
-            </td>
-          </tr>
+          <% for (const detail of r.details) { %>
+            <div class="row j-row j-row-deep">
+              <div class="col-10 j-cell"><%= detail.pointer %></div>
+              <% if (detail.success) { %>
+                <div class="col-1 j-cell"><span class="badge badge-success">OK</span></div>
+              <% } else { %>
+                <div class="col-1 j-cell"><span class="badge badge-danger">NG</span></div>
+              <% } %>
+              <% if (detail.failure) { %>
+                <div class="col-1 j-cell"><span class="badge badge-success">OK</span></div>
+              <% } else { %>
+                <div class="col-1 j-cell"><span class="badge badge-danger">NG</span></div>
+              <% } %>
+            </div>
           <% } %>
-        </tbody>
-      </table>
+          </div>
+        </div>
+      <% } %>
     </div>
   </div>
 
